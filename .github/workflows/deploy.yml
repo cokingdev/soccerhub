@@ -12,33 +12,32 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
-      - name: Replace Gemini API Key
+      - name: Replace API Key Placeholders
         uses: jacobtomlinson/gha-find-replace@v3
         with:
           find: "__GEMINI_API_KEY__"
           replace: "${{ secrets.GEMINI_API_KEY }}"
           include: "index.tsx"
 
-      - name: Replace Paystack Public Key
+      - name: Replace Paystack Key Placeholder
         uses: jacobtomlinson/gha-find-replace@v3
         with:
           find: "__PAYSTACK_PUBLIC_KEY__"
           replace: "${{ secrets.PAYSTACK_PUBLIC_KEY }}"
           include: "index.tsx"
       
-      - name: Replace Firebase Config JSON
+      - name: Replace Firebase Config Placeholder
         uses: jacobtomlinson/gha-find-replace@v3
         with:
           find: "__FIREBASE_CONFIG_JSON__"
           replace: '${{ secrets.FIREBASE_CONFIG_JSON }}'
           include: "index.tsx"
 
-      # Deploy the modified files to Firebase
+      # Deploy to Firebase
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          projectId: '
-soccer-hub-f63f5' # <-- IMPORTANT: REPLACE THIS
+          projectId: 'soccer-hub-f63f5' # <-- IMPORTANT: REPLACE THIS
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
