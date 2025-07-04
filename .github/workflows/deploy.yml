@@ -1,11 +1,9 @@
-# .github/workflows/deploy.yml
-
 name: Deploy to Firebase Hosting
 
 on:
   push:
     branches:
-      - main  # Or your primary branch name (e.g., master)
+      - main # Or your primary branch name (e.g., master)
 
 jobs:
   build_and_deploy:
@@ -14,13 +12,22 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      # This step securely replaces all your placeholder keys with the secrets from GitHub
+      - name: Replace API Key Placeholders
+        run: |
+          sed -i "s|__GEMINI_API_KEY__|${{ secrets.GEMINI_API_KEY }}|g" index.tsx
+          sed -i "s|__PAYSTACK_PUBLIC_KEY__|${{ secrets.PAYSTACK_PUBLIC_KEY }}|g" index.tsx
+          sed -i 's|"__FIREBASE_CONFIG_JSON__"|${{ secrets.FIREBASE_CONFIG_JSON }}|g' index.tsx
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
+          FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
+
+      # This step deploys the modified files to Firebase
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' # This is a placeholder, the token below is used
-          projectId: 'soccer-hub-f63f5' # Replace with your Firebase Project ID
+          projectId: 'soccer-hub-f63f5' # <-- IMPORTANT: REPLACE THIS
         env:
-          FIREBASE_CLI_PREVIEWS: hostingchannels
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} # Also a placeholder
