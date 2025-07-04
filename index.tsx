@@ -11,30 +11,25 @@ import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase
 import { GoogleGenAI } from "https://esm.run/@google/genai";
 
 // Declare environment-injected variables to satisfy TypeScript
-declare let __firebase_config: any;
+declare let __firebase_config: any; // Legacy from Canvas, we will now use our own placeholder
 declare let __app_id: any;
 declare let PaystackPop: any;
 
 
-// IMPORTANT: Your web app's Firebase configuration from the Firebase Console.
-// This block should be replaced with YOUR actual Firebase project configuration.
-// Go to your Firebase project settings -> "Your apps" -> select your web app to find this.
-const hardcodedFirebaseConfig = {
-    apiKey: "AIzaSyBJBy66xmLABpbd-_quq1PpQ6l33SBHjdk", // <--- REPLACE THIS WITH YOUR ACTUAL API KEY
-    authDomain: "soccer-hub-f63f5.firebaseapp.com", // <--- REPLACE THIS WITH YOUR AUTH DOMAIN
-    projectId: "soccer-hub-f63f5", // <--- REPLACE THIS WITH YOUR PROJECT ID
-    storageBucket: "soccer-hub-f63f5.firebasestorage.app",
-    messagingSenderId: "853562412452",
-    appId: "1:853562412452:web:64666188d2ae7163670531",
-    measurementId: "G-19ZKJSCT40"
-};
-// END OF BLOCK TO REPLACE WITH YOUR ACTUAL FIREBASE CONFIGURATION
+// --- Secure Placeholders ---
+// These placeholders will be replaced by the GitHub Actions deployment workflow.
+// This prevents sensitive API keys from being exposed in the public source code.
+const FIREBASE_CONFIG_JSON = "__FIREBASE_CONFIG_JSON__";
+const GEMINI_API_KEY = "__GEMINI_API_KEY__";
+const PAYSTACK_PUBLIC_KEY = "__PAYSTACK_PUBLIC_KEY__";
+// --- End of Secure Placeholders ---
 
-// Use Canvas-provided Firebase config if available (for Canvas environment), otherwise fallback to hardcoded.
-// For local development or direct Firebase Hosting, you MUST replace the hardcodedFirebaseConfig above.
-const firebaseConfig = typeof __firebase_config !== 'undefined'
-    ? JSON.parse(__firebase_config)
-    : hardcodedFirebaseConfig;
+// Use the securely injected Firebase config.
+// For local development, this check will fail, reminding you that keys are missing.
+const firebaseConfig = FIREBASE_CONFIG_JSON.startsWith('{')
+    ? JSON.parse(FIREBASE_CONFIG_JSON)
+    : { apiKey: "INVALID_KEY", projectId: "local-dev" }; // Fallback for local dev
+
 
 // Global Firebase Vars - Initialize immediately (moved inside DOMContentLoaded for strict ordering)
 let app;
@@ -47,10 +42,6 @@ let userName = 'Anonymous'; // Default user name
 let userProfile = null; // Store current user's profile data
 let isPremium = false; // Default premium status
 let isAnonymous = true;
-
-// Paystack Public Key (Replace with your actual public key from your Paystack Dashboard)
-// For testing, you can use a test public key. DO NOT use your secret key here.
-const PAYSTACK_PUBLIC_KEY = 'pk_live_1a0a4a130d8fe37d59bea52ff5d7dcc83ca2691a';
 
 // Your app's unique identifier for Firestore paths
 const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
@@ -171,9 +162,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Securely initialize Gemini AI.
-    // The API key placeholder below will be replaced by the GitHub Actions deployment workflow.
     try {
-        ai = new GoogleGenAI({ apiKey: "__GEMINI_API_KEY__" });
+        ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     } catch (e) {
         console.error("Failed to initialize Gemini AI. This can happen if the API_KEY is not configured in the environment.", e);
         ai = null; // Ensure ai is null to prevent further errors.
@@ -280,7 +270,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     myProfileFollowersCount = document.getElementById('my-profile-followers-count');
 
     // Gracefully handle missing AI instance
-    if (!ai || (ai && ai.apiKey === "__GEMINI_API_KEY__")) {
+    if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
         if(getRealWorldFixturesBtn) {
             getRealWorldFixturesBtn.disabled = true;
             getRealWorldFixturesBtn.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> AI Not Configured';
