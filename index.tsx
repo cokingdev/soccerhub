@@ -1,3 +1,4 @@
+
 // Firebase Imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 // Import GoogleAuthProvider and signInWithPopup for Google Sign-In
@@ -170,9 +171,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Securely initialize Gemini AI.
-    // The hosting environment is expected to provide the API key via the `process.env.API_KEY` variable.
+    // The API key placeholder below will be replaced by the GitHub Actions deployment workflow.
     try {
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        ai = new GoogleGenAI({ apiKey: "__GEMINI_API_KEY__" });
     } catch (e) {
         console.error("Failed to initialize Gemini AI. This can happen if the API_KEY is not configured in the environment.", e);
         ai = null; // Ensure ai is null to prevent further errors.
@@ -279,7 +280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     myProfileFollowersCount = document.getElementById('my-profile-followers-count');
 
     // Gracefully handle missing AI instance
-    if (!ai) {
+    if (!ai || (ai && ai.apiKey === "__GEMINI_API_KEY__")) {
         if(getRealWorldFixturesBtn) {
             getRealWorldFixturesBtn.disabled = true;
             getRealWorldFixturesBtn.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> AI Not Configured';
@@ -580,8 +581,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     overlayGoPremiumBtn.addEventListener('click', handlePremiumPurchase);
     
     async function generateFixturesAndPredictionsWithGemini(dateString) {
-        if (!ai) {
-            console.error("[Gemini Fixtures] AI not initialized.");
+        if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
+            console.error("[Gemini Fixtures] AI not initialized or API key is a placeholder.");
             return { fixtures: null, sources: [] };
         }
         console.log(`[Gemini Fixtures] Requesting fixtures and predictions for ${dateString} using Google Search grounding.`);
@@ -806,7 +807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     getRealWorldFixturesBtn.addEventListener('click', async () => {
         console.log("[Get Real-World Fixtures Button] Clicked.");
 
-        if (!ai) {
+        if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
             showNotification('AI features are not available. The API key might be missing.', 'error');
             return;
         }
