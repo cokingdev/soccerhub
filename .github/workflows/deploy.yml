@@ -3,7 +3,7 @@ name: Deploy to Firebase Hosting
 on:
   push:
     branches:
-      - main # Or your primary branch name (e.g., master)
+      - main
 
 jobs:
   build_and_deploy:
@@ -12,22 +12,33 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
-      # This step securely replaces all your placeholder keys with the secrets from GitHub
-      - name: Replace API Key Placeholders
-        run: |
-          sed -i "s|__GEMINI_API_KEY__|${{ secrets.GEMINI_API_KEY }}|g" index.tsx
-          sed -i "s|__PAYSTACK_PUBLIC_KEY__|${{ secrets.PAYSTACK_PUBLIC_KEY }}|g" index.tsx
-          sed -i 's|"__FIREBASE_CONFIG_JSON__"|${{ secrets.FIREBASE_CONFIG_JSON }}|g' index.tsx
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
-          FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
+      - name: Replace Gemini API Key
+        uses: jacobtomlinson/gha-find-replace@v3
+        with:
+          find: "__GEMINI_API_KEY__"
+          replace: "${{ secrets.GEMINI_API_KEY }}"
+          include: "index.tsx"
 
-      # This step deploys the modified files to Firebase
+      - name: Replace Paystack Public Key
+        uses: jacobtomlinson/gha-find-replace@v3
+        with:
+          find: "__PAYSTACK_PUBLIC_KEY__"
+          replace: "${{ secrets.PAYSTACK_PUBLIC_KEY }}"
+          include: "index.tsx"
+      
+      - name: Replace Firebase Config JSON
+        uses: jacobtomlinson/gha-find-replace@v3
+        with:
+          find: "__FIREBASE_CONFIG_JSON__"
+          replace: '${{ secrets.FIREBASE_CONFIG_JSON }}'
+          include: "index.tsx"
+
+      # Deploy the modified files to Firebase
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          projectId: 'soccer-hub-f63f5' # <-- IMPORTANT: REPLACE THIS
+          projectId: '
+soccer-hub-f63f5' # <-- IMPORTANT: REPLACE THIS
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

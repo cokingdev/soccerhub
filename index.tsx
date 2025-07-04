@@ -1,4 +1,5 @@
 
+
 // Firebase Imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 // Import GoogleAuthProvider and signInWithPopup for Google Sign-In
@@ -17,21 +18,14 @@ declare let PaystackPop: any;
 
 
 // --- Secure Placeholders ---
-// These placeholders will be replaced by the GitHub Actions deployment workflow.
-// This prevents sensitive API keys from being exposed in the public source code.
-const FIREBASE_CONFIG_JSON = "__FIREBASE_CONFIG_JSON__";
-const GEMINI_API_KEY = "__GEMINI_API_KEY__";
-const PAYSTACK_PUBLIC_KEY = "__PAYSTACK_PUBLIC_KEY__";
+const PLACEHOLDER_PREFIX = "__"; // Define a prefix for easy checking
+// Using backticks (`) makes string replacement in CI/CD much more reliable.
+const FIREBASE_CONFIG_JSON = `__FIREBASE_CONFIG_JSON__`;
+const GEMINI_API_KEY = `__GEMINI_API_KEY__`;
+const PAYSTACK_PUBLIC_KEY = `__PAYSTACK_PUBLIC_KEY__`;
 // --- End of Secure Placeholders ---
 
-// Use the securely injected Firebase config.
-// For local development, this check will fail, reminding you that keys are missing.
-const firebaseConfig = FIREBASE_CONFIG_JSON.startsWith('{')
-    ? JSON.parse(FIREBASE_CONFIG_JSON)
-    : { apiKey: "INVALID_KEY", projectId: "local-dev" }; // Fallback for local dev
-
-
-// Global Firebase Vars - Initialize immediately (moved inside DOMContentLoaded for strict ordering)
+// Global Firebase Vars
 let app;
 let auth;
 let db;
@@ -44,7 +38,7 @@ let isPremium = false; // Default premium status
 let isAnonymous = true;
 
 // Your app's unique identifier for Firestore paths
-const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : "soccer-hub-app";
 
 
 // Declare main elements at a higher scope to ensure accessibility
@@ -139,40 +133,91 @@ let myProfileFollowingCount;
 let myProfileFollowersCount;
 
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // Initialize Firebase and Gemini AI here, after DOM is ready
+// Main entry point
+document.addEventListener('DOMContentLoaded', initializeAppAndCheckKeys);
+
+/**
+ * Checks for valid API keys and initializes all services.
+ * If keys are missing in a deployed environment, it displays an error and halts.
+ */
+async function initializeAppAndCheckKeys() {
+    const isDeployment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+    // Critical check: If running on a server and placeholders are still present, halt the app and show an error.
+    if (isDeployment && (
+        GEMINI_API_KEY.startsWith(PLACEHOLDER_PREFIX) ||
+        PAYSTACK_PUBLIC_KEY.startsWith(PLACEHOLDER_PREFIX) ||
+        FIREBASE_CONFIG_JSON.startsWith(PLACEHOLDER_PREFIX)
+    )) {
+        document.body.innerHTML = `
+            <div style="font-family: 'Inter', sans-serif; padding: 40px; text-align: center; background-color: #fff5f5; color: #c53030; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <h1 style="font-size: 2rem; font-weight: bold; margin-bottom: 1.5rem;">Deployment Configuration Error</h1>
+                <p style="font-size: 1.1rem; margin-bottom: 1rem;">The application is not configured correctly because one or more API keys were not replaced during the deployment process.</p>
+                <p style="font-size: 1rem;">This is almost always caused by an error in the GitHub Actions workflow file (<code>.github/workflows/deploy.yml</code>).</p>
+                <div style="background-color: #fed7d7; border: 1px solid #f56565; padding: 1.5rem; margin-top: 2rem; border-radius: 8px; text-align: left; display: inline-block; max-width: 800px;">
+                    <h2 style="font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem;">How to Fix:</h2>
+                    <ol style="list-style-position: inside; text-align: left; line-height: 1.6;">
+                        <li>Ensure the <strong>GEMINI_API_KEY</strong>, <strong>PAYSTACK_PUBLIC_KEY</strong>, and <strong>FIREBASE_CONFIG_JSON</strong> secrets are correctly set in your GitHub repository's "Settings" > "Secrets and variables" > "Actions".</li>
+                        <li>Update your <code>.github/workflows/deploy.yml</code> file to use a reliable method for replacing these placeholders. The 'sed' command can fail if your keys contain special characters.</li>
+                        <li style="font-weight: bold;">It is highly recommended to use the <strong><code>jacobtomlinson/gha-find-replace</code></strong> action instead of 'sed' for a robust solution.</li>
+                    </ol>
+                </div>
+            </div>
+        `;
+        console.error("HALTING APP: API keys not replaced during deployment.");
+        return; // Stop all further execution
+    }
+
+    // --- Initialization ---
+    // Safely parse Firebase config
+    const firebaseConfig = FIREBASE_CONFIG_JSON.startsWith('{')
+        ? JSON.parse(FIREBASE_CONFIG_JSON)
+        : { apiKey: "local-dev-key", projectId: "local-dev" }; // Safe fallback for local development
+
+    // Initialize Firebase Services
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
 
-    // Enable Firestore offline persistence to make the app more robust against network issues
+    // Enable Firestore offline persistence
     try {
         await enableIndexedDbPersistence(db);
         console.log("Firestore offline persistence enabled.");
     } catch (err) {
         if (err.code == 'failed-precondition') {
-            // Multiple tabs open, persistence can only be enabled
-            // in one tab at a a time.
-            console.warn("Firestore persistence failed: failed-precondition. More than one tab open?");
+            console.warn("Firestore persistence failed: Multiple tabs open.");
         } else if (err.code == 'unimplemented') {
-            // The current browser does not support all of the
-            // features required to enable persistence
-            console.warn("Firestore persistence failed: unimplemented. Browser not supported?");
+            console.warn("Firestore persistence failed: Browser not supported.");
         }
     }
-    
-    // Securely initialize Gemini AI.
-    try {
-        ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    } catch (e) {
-        console.error("Failed to initialize Gemini AI. This can happen if the API_KEY is not configured in the environment.", e);
-        ai = null; // Ensure ai is null to prevent further errors.
-    }
-    
-    const analytics = getAnalytics(app); // Initialize analytics if needed
 
-    console.log('DOMContentLoaded: Firebase and Gemini AI initialized.');
-    
+    // Securely initialize Gemini AI
+    if (GEMINI_API_KEY.startsWith(PLACEHOLDER_PREFIX)) {
+        console.warn("Gemini API key is a placeholder. AI features will be disabled for local development.");
+        ai = null;
+    } else {
+        try {
+            ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        } catch (e) {
+            console.error("Failed to initialize Gemini AI. The key might be invalid.", e);
+            ai = null;
+        }
+    }
+
+    // Initialize Analytics
+    getAnalytics(app);
+    console.log('initializeAppAndCheckKeys: All services initialized.');
+
+    // Proceed to set up the UI and event listeners
+    setupUIAndListeners();
+}
+
+
+/**
+ * Queries all DOM elements and attaches event listeners.
+ * This function is called only after successful key checks and initialization.
+ */
+function setupUIAndListeners() {
     // Helper function to escape single quotes for onclick attributes
     const escapeAttr = (str) => String(str).replace(/'/g, "\\'");
     
@@ -270,7 +315,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     myProfileFollowersCount = document.getElementById('my-profile-followers-count');
 
     // Gracefully handle missing AI instance
-    if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
+    if (!ai) {
         if(getRealWorldFixturesBtn) {
             getRealWorldFixturesBtn.disabled = true;
             getRealWorldFixturesBtn.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> AI Not Configured';
@@ -300,6 +345,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (isPremium) {
             showNotification('You are already a premium member!', 'success');
+            return;
+        }
+        
+        if (PAYSTACK_PUBLIC_KEY.startsWith(PLACEHOLDER_PREFIX)) {
+            showNotification('Payment gateway is not configured.', 'error');
             return;
         }
 
@@ -571,8 +621,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     overlayGoPremiumBtn.addEventListener('click', handlePremiumPurchase);
     
     async function generateFixturesAndPredictionsWithGemini(dateString) {
-        if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
-            console.error("[Gemini Fixtures] AI not initialized or API key is a placeholder.");
+        if (!ai) {
+            console.error("[Gemini Fixtures] AI not initialized.");
+            showNotification('AI features are not configured.', 'error');
             return { fixtures: null, sources: [] };
         }
         console.log(`[Gemini Fixtures] Requesting fixtures and predictions for ${dateString} using Google Search grounding.`);
@@ -797,8 +848,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     getRealWorldFixturesBtn.addEventListener('click', async () => {
         console.log("[Get Real-World Fixtures Button] Clicked.");
 
-        if (!ai || ai.apiKey === "__GEMINI_API_KEY__") {
-            showNotification('AI features are not available. The API key might be missing.', 'error');
+        if (!ai) {
+            showNotification('AI features are not available. The API key might be missing or invalid.', 'error');
             return;
         }
 
@@ -844,5 +895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Start with default section and schedule daily refresh
+    showSection(predictionsSection, sidebarNavPredictions);
     scheduleDailyRefresh();
-});
+}
