@@ -1,5 +1,3 @@
-
-
 // Firebase Imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 // Import GoogleAuthProvider and signInWithPopup for Google Sign-In
@@ -12,20 +10,9 @@ import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase
 import { GoogleGenAI } from "https://esm.run/@google/genai";
 
 // Declare environment-injected variables to satisfy TypeScript
-declare let __firebase_config: any; // Legacy from Canvas, we will now use our own placeholder
-declare let __app_id: any;
 declare let PaystackPop: any;
 
-
-// --- Secure Placeholders ---
-const PLACEHOLDER_PREFIX = "__"; // Define a prefix for easy checking
-// Using backticks (`) makes string replacement in CI/CD much more reliable.
-const FIREBASE_CONFIG_JSON = `__FIREBASE_CONFIG_JSON__`;
-const GEMINI_API_KEY = `__GEMINI_API_KEY__`;
-const PAYSTACK_PUBLIC_KEY = `__PAYSTACK_PUBLIC_KEY__`;
-// --- End of Secure Placeholders ---
-
-// Global Firebase Vars
+// Global Firebase Vars - Initialize immediately (moved inside DOMContentLoaded for strict ordering)
 let app;
 let auth;
 let db;
@@ -37,8 +24,9 @@ let userProfile = null; // Store current user's profile data
 let isPremium = false; // Default premium status
 let isAnonymous = true;
 
-// Your app's unique identifier for Firestore paths
-const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : "soccer-hub-app";
+// Paystack Public Key (Replace with your actual public key from your Paystack Dashboard)
+// For testing, you can use a test public key. DO NOT use your secret key here.
+const PAYSTACK_PUBLIC_KEY = 'pk_live_1a0a4a130d8fe37d59bea52ff5d7dcc83ca2691a';
 
 
 // Declare main elements at a higher scope to ensure accessibility
@@ -133,91 +121,67 @@ let myProfileFollowingCount;
 let myProfileFollowersCount;
 
 
-// Main entry point
-document.addEventListener('DOMContentLoaded', initializeAppAndCheckKeys);
-
-/**
- * Checks for valid API keys and initializes all services.
- * If keys are missing in a deployed environment, it displays an error and halts.
- */
-async function initializeAppAndCheckKeys() {
-    const isDeployment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-
-    // Critical check: If running on a server and placeholders are still present, halt the app and show an error.
-    if (isDeployment && (
-        GEMINI_API_KEY.startsWith(PLACEHOLDER_PREFIX) ||
-        PAYSTACK_PUBLIC_KEY.startsWith(PLACEHOLDER_PREFIX) ||
-        FIREBASE_CONFIG_JSON.startsWith(PLACEHOLDER_PREFIX)
-    )) {
+document.addEventListener('DOMContentLoaded', async () => {
+    let firebaseConfig;
+    try {
+        // Fetch the config from the special URL provided by Firebase Hosting.
+        // This ensures the app always uses the correct config for the project it's deployed to.
+        const response = await fetch('/__/firebase/init.json');
+        if (!response.ok) {
+            // This will fail in local development unless you use the Firebase Emulator Suite.
+            // For production, this is the most reliable method.
+            throw new Error(`Firebase config not found. Status: ${response.status}`);
+        }
+        firebaseConfig = await response.json();
+    } catch (error) {
+        console.error("CRITICAL: Could not load Firebase configuration.", error);
         document.body.innerHTML = `
-            <div style="font-family: 'Inter', sans-serif; padding: 40px; text-align: center; background-color: #fff5f5; color: #c53030; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                <h1 style="font-size: 2rem; font-weight: bold; margin-bottom: 1.5rem;">Deployment Configuration Error</h1>
-                <p style="font-size: 1.1rem; margin-bottom: 1rem;">The application is not configured correctly because one or more API keys were not replaced during the deployment process.</p>
-                <p style="font-size: 1rem;">This is almost always caused by an error in the GitHub Actions workflow file (<code>.github/workflows/deploy.yml</code>).</p>
-                <div style="background-color: #fed7d7; border: 1px solid #f56565; padding: 1.5rem; margin-top: 2rem; border-radius: 8px; text-align: left; display: inline-block; max-width: 800px;">
-                    <h2 style="font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem;">How to Fix:</h2>
-                    <ol style="list-style-position: inside; text-align: left; line-height: 1.6;">
-                        <li>Ensure the <strong>GEMINI_API_KEY</strong>, <strong>PAYSTACK_PUBLIC_KEY</strong>, and <strong>FIREBASE_CONFIG_JSON</strong> secrets are correctly set in your GitHub repository's "Settings" > "Secrets and variables" > "Actions".</li>
-                        <li>Update your <code>.github/workflows/deploy.yml</code> file to use a reliable method for replacing these placeholders. The 'sed' command can fail if your keys contain special characters.</li>
-                        <li style="font-weight: bold;">It is highly recommended to use the <strong><code>jacobtomlinson/gha-find-replace</code></strong> action instead of 'sed' for a robust solution.</li>
-                    </ol>
-                </div>
+            <div class="p-8 text-center text-red-600 bg-red-100 h-screen flex flex-col justify-center items-center">
+                <h1 class="text-2xl font-bold">Error: Application Failed to Start</h1>
+                <p class="mt-2">Could not load Firebase configuration. This app must be run on a Firebase Hosting environment.</p>
+                <p class="mt-1 text-sm text-gray-700">If you are developing locally, please use the Firebase Emulator Suite.</p>
             </div>
         `;
-        console.error("HALTING APP: API keys not replaced during deployment.");
         return; // Stop all further execution
     }
 
-    // --- Initialization ---
-    // Safely parse Firebase config
-    const firebaseConfig = FIREBASE_CONFIG_JSON.startsWith('{')
-        ? JSON.parse(FIREBASE_CONFIG_JSON)
-        : { apiKey: "local-dev-key", projectId: "local-dev" }; // Safe fallback for local development
-
-    // Initialize Firebase Services
+    // Initialize Firebase and Gemini AI here, after DOM is ready
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
 
-    // Enable Firestore offline persistence
+    // Your app's unique identifier for Firestore paths
+    const APP_IDENTIFIER = firebaseConfig.projectId;
+
+    // Enable Firestore offline persistence to make the app more robust against network issues
     try {
         await enableIndexedDbPersistence(db);
         console.log("Firestore offline persistence enabled.");
     } catch (err) {
         if (err.code == 'failed-precondition') {
-            console.warn("Firestore persistence failed: Multiple tabs open.");
+            // Multiple tabs open, persistence can only be enabled
+            // in one tab at a a time.
+            console.warn("Firestore persistence failed: failed-precondition. More than one tab open?");
         } else if (err.code == 'unimplemented') {
-            console.warn("Firestore persistence failed: Browser not supported.");
+            // The current browser does not support all of the
+            // features required to enable persistence
+            console.warn("Firestore persistence failed: unimplemented. Browser not supported?");
         }
     }
-
-    // Securely initialize Gemini AI
-    if (GEMINI_API_KEY.startsWith(PLACEHOLDER_PREFIX)) {
-        console.warn("Gemini API key is a placeholder. AI features will be disabled for local development.");
-        ai = null;
-    } else {
-        try {
-            ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-        } catch (e) {
-            console.error("Failed to initialize Gemini AI. The key might be invalid.", e);
-            ai = null;
-        }
+    
+    // Securely initialize Gemini AI.
+    // The hosting environment is expected to provide the API key via the `process.env.API_KEY` variable.
+    try {
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    } catch (e) {
+        console.error("Failed to initialize Gemini AI. This can happen if the API_KEY is not configured in the environment.", e);
+        ai = null; // Ensure ai is null to prevent further errors.
     }
+    
+    const analytics = getAnalytics(app); // Initialize analytics if needed
 
-    // Initialize Analytics
-    getAnalytics(app);
-    console.log('initializeAppAndCheckKeys: All services initialized.');
-
-    // Proceed to set up the UI and event listeners
-    setupUIAndListeners();
-}
-
-
-/**
- * Queries all DOM elements and attaches event listeners.
- * This function is called only after successful key checks and initialization.
- */
-function setupUIAndListeners() {
+    console.log(`DOMContentLoaded: Firebase Initialized for project ${firebaseConfig.projectId}.`);
+    
     // Helper function to escape single quotes for onclick attributes
     const escapeAttr = (str) => String(str).replace(/'/g, "\\'");
     
@@ -347,11 +311,6 @@ function setupUIAndListeners() {
             showNotification('You are already a premium member!', 'success');
             return;
         }
-        
-        if (PAYSTACK_PUBLIC_KEY.startsWith(PLACEHOLDER_PREFIX)) {
-            showNotification('Payment gateway is not configured.', 'error');
-            return;
-        }
 
         const handler = PaystackPop.setup({
             key: PAYSTACK_PUBLIC_KEY,
@@ -460,11 +419,9 @@ function setupUIAndListeners() {
 
     const handleGoogleSignIn = async () => {
         const provider = new GoogleAuthProvider();
-        // Use the specific Google Client ID provided by the user.
-        // This ensures the correct OAuth client is used for the sign-in request.
-        provider.setCustomParameters({
-          'client_id': '378840631199-nuuor3t1pkcqufv0k9ei3lg0fal46ic0.apps.googleusercontent.com'
-        });
+        // The Firebase SDK automatically uses the OAuth client ID configured
+        // in your Firebase project's authentication settings.
+        // Removing the hardcoded client ID makes the code cleaner and more portable.
         try {
             await signInWithPopup(auth, provider);
             showNotification('Successfully signed in with Google!', 'success');
@@ -623,7 +580,6 @@ function setupUIAndListeners() {
     async function generateFixturesAndPredictionsWithGemini(dateString) {
         if (!ai) {
             console.error("[Gemini Fixtures] AI not initialized.");
-            showNotification('AI features are not configured.', 'error');
             return { fixtures: null, sources: [] };
         }
         console.log(`[Gemini Fixtures] Requesting fixtures and predictions for ${dateString} using Google Search grounding.`);
@@ -849,7 +805,7 @@ function setupUIAndListeners() {
         console.log("[Get Real-World Fixtures Button] Clicked.");
 
         if (!ai) {
-            showNotification('AI features are not available. The API key might be missing or invalid.', 'error');
+            showNotification('AI features are not available. The API key might be missing.', 'error');
             return;
         }
 
@@ -895,7 +851,5 @@ function setupUIAndListeners() {
         }
     });
 
-    // Start with default section and schedule daily refresh
-    showSection(predictionsSection, sidebarNavPredictions);
     scheduleDailyRefresh();
-}
+});
